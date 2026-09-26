@@ -1,4 +1,4 @@
-DROP PROCEDURE logNetrunAction;
+DROP PROCEDURE IF EXISTS logNetrunAction;
 CREATE DEFINER=`testuser`@`%` PROCEDURE `logNetrunAction`(
     IN 	action 			VARCHAR(50),			-- Логгируемое действие нетраннера, до 50 символов
 	IN 	objectId		INT UNSIGNED,			-- id объекта подвергшегося взлому (id персонажа, замка, камеры и т.д.)

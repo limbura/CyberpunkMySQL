@@ -1,4 +1,4 @@
-DROP PROCEDURE transferBalanceCommon;
+DROP PROCEDURE IF EXISTS transferBalanceCommon;
 CREATE DEFINER=`testuser`@`%` PROCEDURE `transferBalanceCommon`(
     in  senderId		int unsigned,			-- id отправителя
     in  receiverId		int unsigned,			-- id получателя

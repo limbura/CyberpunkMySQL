@@ -14,5 +14,3 @@ BEGIN
     -- Присвоить id создаваемой записи
     SET NEW.id = _newId;
 END;
--- ALTER TABLE main
---     ALTER COLUMN id SET DEFAULT 0;
