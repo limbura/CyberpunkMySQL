@@ -3,14 +3,14 @@
 """JoinRPG (проект 1631) -> cyberwall.main. Python 3.10+.
 
 Установка: py -m pip install mysql-connector-python
-Предпросмотр: py joinrpg_import.py
-Запись в БД: py joinrpg_import.py --apply
+Запуск с предпросмотром и предложением применить: py joinrpg_import.py
 Один персонаж: py joinrpg_import.py --character-id 12345
 
-Параметры подключения можно изменить ниже. Пароли запрашиваются при запуске.
-Для запуска без диалога доступны переменные окружения JOINRPG_EMAIL,
-JOINRPG_PASSWORD, CYBERWALL_MYSQL_HOST, CYBERWALL_MYSQL_PORT,
-CYBERWALL_MYSQL_USER, CYBERWALL_MYSQL_PASSWORD.
+IP, порт и пользователь MySQL запрашиваются при запуске. Enter выбирает
+127.0.0.1, 3306 и master соответственно. Пароли также запрашиваются.
+Email и пароли можно задать переменными окружения JOINRPG_EMAIL,
+JOINRPG_PASSWORD и CYBERWALL_MYSQL_PASSWORD.
+Для входа в JoinRPG нужна учетная запись с мастерскими правами на проект 1631.
 
 Требуется столбец main.joinrpg_id INT UNSIGNED NULL с UNIQUE-индексом.
 ID выдают существующие mainBeforeInsert/generateId/mainAfterInsert.
@@ -26,10 +26,13 @@ ID выдают существующие mainBeforeInsert/generateId/mainAfterIn
 Это обработка строки API, не восстановление и не проверка календарной даты.
 
 Предпросмотр не выполняет INSERT/UPDATE и не расходует ID через триггеры.
-При --apply каждая запись фиксируется отдельно. При SQL-ошибке текущая
+После предпросмотра скрипт предлагает применить изменения: да/нет, Enter = нет.
+Если изменений нет, подтверждение не запрашивается. При применении используется
+уже загруженный набор данных JoinRPG; запись MySQL повторно проверяется перед
+INSERT/UPDATE. Каждая запись фиксируется отдельно. При SQL-ошибке текущая
 транзакция откатывается и запуск останавливается; ранее сохраненное остается.
 Повторный запуск безопасен по joinrpg_id. Два экземпляра этого скрипта
-с --apply не работают одновременно благодаря MySQL GET_LOCK.
+не применяют изменения одновременно благодаря MySQL GET_LOCK.
 При разрыве соединения во время COMMIT результат может быть неизвестен:
 повторный запуск сверит фактическое состояние БД.
 
@@ -52,10 +55,10 @@ import urllib.request
 from dataclasses import dataclass
 
 
-# Настройки подключения. Пароли лучше вводить в приглашении при запуске.
-MYSQL_HOST = os.getenv("CYBERWALL_MYSQL_HOST", "127.0.0.1")
-MYSQL_PORT = os.getenv("CYBERWALL_MYSQL_PORT", "3306")
-MYSQL_USER = os.getenv("CYBERWALL_MYSQL_USER", "master")
+# Значения по умолчанию для интерактивного подключения к MySQL.
+MYSQL_HOST = "127.0.0.1"
+MYSQL_PORT = 3306
+MYSQL_USER = "master"
 MYSQL_DATABASE = "cyberwall"
 JOINRPG_EMAIL = os.getenv("JOINRPG_EMAIL", "")
 PROJECT_ID = 1631
@@ -63,6 +66,29 @@ NAME_PROGRAMMATIC_ID = "1"
 PASSWORD_PROGRAMMATIC_ID = "4"
 API_BASE = "https://joinrpg.ru"
 LOCK_NAME = "cyberwall.main.joinrpg_import"
+TAB_SIZE = 8  # Шаг табуляции в консоли (обычно 8 позиций).
+
+
+def record_columns(action, record):
+	# Управляющие символы внутри имени не должны нарушать строки и колонки.
+	name = re.sub(r"[\t\r\n]", " ", record.name)
+	return (f"{action}:", f"joinrpg_id {record.joinrpg_id}",
+		f"name {name}", f"password {record.password}")
+
+
+def output_column_widths(records):
+	# Каждая следующая колонка начинается с общей позиции табуляции.
+	max_lengths = [len("БЕЗ ИЗМЕНЕНИЙ:"), 0, 0]
+	for record in records:
+		for index, text in enumerate(record_columns("БЕЗ ИЗМЕНЕНИЙ", record)[:3]):
+			max_lengths[index] = max(max_lengths[index], len(text))
+	return tuple((length // TAB_SIZE + 1) * TAB_SIZE for length in max_lengths)
+
+
+def format_record(action, record, widths):
+	columns = record_columns(action, record)
+	return "".join(text + "\t" * ((width - len(text) + TAB_SIZE - 1) // TAB_SIZE)
+		for text, width in zip(columns[:3], widths)) + columns[3]
 
 
 class ImportProblem(Exception):
@@ -284,16 +310,39 @@ def sync_record(cursor, record, apply):
 	return "ОБНОВЛЕНИЕ", ", ".join(changed)
 
 
+def prompt_mysql_connection():
+	print("\nПодключение к MySQL. Нажми Enter, чтобы использовать значение в скобках.")
+	host = input(f"IP БД [{MYSQL_HOST}]: ").strip() or MYSQL_HOST
+	while True:
+		port_text = input(f"Порт БД [{MYSQL_PORT}]: ").strip() or str(MYSQL_PORT)
+		if re.fullmatch(r"[0-9]{1,5}", port_text) and 1 <= int(port_text) <= 65535:
+			port = int(port_text)
+			break
+		print("Некорректный порт: введи целое число от 1 до 65535.")
+	user = input(f"Пользователь БД [{MYSQL_USER}]: ").strip() or MYSQL_USER
+	return host, port, user
+
+
+def confirm_apply():
+	while True:
+		answer = input("\nПрименить показанные изменения в БД? [y/n]: ").strip().lower()
+		if answer in ("да", "д", "yes", "y", "YES", "Yes", "Y"):
+			return True
+		if answer in ("", "нет", "н", "no", "n", "NO", "No", "N"):
+			return False
+		print("Введи «да» или «нет». Enter — не применять изменения.")
+
+
 def run():
 	parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-	parser.add_argument("--apply", action="store_true", help="Записать изменения (без флага только просмотр)")
 	parser.add_argument("--character-id", type=int, help="Обработать только одного персонажа")
 	args = parser.parse_args()
 	try:
 		import mysql.connector
 	except ImportError:
 		raise ImportProblem("Установи зависимость: py -m pip install mysql-connector-python") from None
-	print("РЕЖИМ: " + ("ЗАПИСЬ В MYSQL" if args.apply else "ПРЕДПРОСМОТР, БЕЗ ЗАПИСИ"))
+	print("РЕЖИМ: ПРЕДПРОСМОТР, ЗАТЕМ ПОДТВЕРЖДЕНИЕ ЗАПИСИ")
+	print(f"Для входа в JoinRPG используй учетную запись с мастерскими правами на игру {PROJECT_ID}.")
 	email = JOINRPG_EMAIL.strip() or input("Email JoinRPG: ").strip()
 	password = os.getenv("JOINRPG_PASSWORD")
 	if password is None:
@@ -304,50 +353,68 @@ def run():
 	if not records:
 		print("Нет записей, пригодных для импорта. MySQL не изменен.")
 		return 2 if data_errors else 0
+	db_host, db_port, db_user = prompt_mysql_connection()
 	db_password = os.getenv("CYBERWALL_MYSQL_PASSWORD")
 	if db_password is None:
-		db_password = getpass.getpass(f"Пароль MySQL ({MYSQL_USER}@{MYSQL_HOST}): ")
+		db_password = getpass.getpass(f"Пароль MySQL ({db_user}@{db_host}:{db_port}): ")
 	connection = None
 	try:
 		connection = mysql.connector.connect(
-			host=MYSQL_HOST, port=int(MYSQL_PORT), user=MYSQL_USER,
+			host=db_host, port=db_port, user=db_user,
 			password=db_password, database=MYSQL_DATABASE, charset="utf8mb4",
 			connection_timeout=15, autocommit=False, raise_on_warnings=True)
 		cursor = connection.cursor(dictionary=True, buffered=True)
 		try:
 			verify_schema(cursor)
-			if args.apply:
-				cursor.execute("SELECT GET_LOCK(%s, 0) AS acquired", (LOCK_NAME,))
-				if cursor.fetchone()["acquired"] != 1:
-					raise ImportProblem("Другой экземпляр импорта уже работает.")
 			connection.rollback()
-			counts = Counter()
-			for record in records:
-				try:
-					action, detail = sync_record(cursor, record, args.apply)
-					if args.apply:
-						connection.commit()
-					else:
-						connection.rollback()
-					counts[action] += 1
-					# Показываем очищенный игровой пароль, подготовленный для MySQL.
-					print(f"{action}: JoinRPG {record.joinrpg_id}; имя={record.name!r}; "
-						f"{detail}; password={record.password!r}")
-				except mysql.connector.Error as exc:
+			column_widths = output_column_widths(records)
+			pending_records = []
+			for apply in (False, True):
+				if apply:
+					if not pending_records:
+						print("Изменений для применения нет.")
+						break
+					if not confirm_apply():
+						print("Изменения не применены. Запись в БД не выполнялась.")
+						break
+					# Во время ожидания ответа нет транзакции с блокировками строк.
+					cursor.execute("SELECT GET_LOCK(%s, 0) AS acquired", (LOCK_NAME,))
+					if cursor.fetchone()["acquired"] != 1:
+						raise ImportProblem("Другой экземпляр импорта уже применяет изменения.")
+					connection.rollback()
+					print("\nПРИМЕНЕНИЕ ИЗМЕНЕНИЙ:")
+				else:
+					print("\nПЛАН ИЗМЕНЕНИЙ (запись в БД еще не выполняется):")
+				counts = Counter()
+				for record in (pending_records if apply else records):
 					try:
-						connection.rollback()
-					except mysql.connector.Error:
-						pass
-					raise ImportProblem(
-						f"MySQL: ошибка {exc.errno}, SQLSTATE {exc.sqlstate}, "
-						f"персонаж {record.name!r} (JoinRPG {record.joinrpg_id}). Импорт остановлен. "
-						"Ранее подтвержденные записи сохранены. "
-						"При потере соединения на COMMIT результат уточнит повторный запуск."
-					) from None
-			print("ИТОГО: " + ", ".join(f"{k}: {v}" for k, v in counts.items()))
-			print(f"Пропущено из-за ошибок полей: {data_errors}")
-			if not args.apply:
-				print("Это план изменений. Для записи запусти с --apply.")
+						action, _detail = sync_record(cursor, record, apply)
+						if apply:
+							connection.commit()
+						else:
+							connection.rollback()
+							if action != "БЕЗ ИЗМЕНЕНИЙ":
+								pending_records.append(record)
+						counts[action] += 1
+						# Показываем очищенный игровой пароль, подготовленный для MySQL.
+						print(format_record(action, record, column_widths))
+					except mysql.connector.Error as exc:
+						try:
+							connection.rollback()
+						except mysql.connector.Error:
+							pass
+						raise ImportProblem(
+							f"MySQL: ошибка {exc.errno}, SQLSTATE {exc.sqlstate}, "
+							f"персонаж {record.name!r} (JoinRPG {record.joinrpg_id}). Импорт остановлен. "
+							"Ранее подтвержденные записи сохранены. "
+							"При потере соединения на COMMIT результат уточнит повторный запуск."
+						) from None
+				print(("ИТОГО ПРИМЕНЕНО: " if apply else "ИТОГО ПЛАН: ")
+					+ ", ".join(f"{k}: {v}" for k, v in counts.items()))
+				if not apply:
+					print(f"Пропущено из-за ошибок полей: {data_errors}")
+				else:
+					print("Изменения применены.")
 		finally:
 			cursor.close()
 	except mysql.connector.Error as exc:
