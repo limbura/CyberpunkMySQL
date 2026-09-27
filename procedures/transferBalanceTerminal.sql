@@ -1,5 +1,6 @@
 DROP PROCEDURE IF EXISTS transferBalanceTerminal;
-CREATE DEFINER=`testuser`@`%` PROCEDURE `transferBalanceTerminal`(
+-- CREATE DEFINER=`testuser`@`%` PROCEDURE `transferBalanceTerminal`(
+CREATE PROCEDURE `transferBalanceTerminal`(
     IN 	senderCardId 	bigint unsigned,		-- cardId отправителя
     IN 	receiverCardId 	bigint unsigned,		-- cardId получателя
     IN 	amount 			int unsigned,			-- Количество (положительное!)

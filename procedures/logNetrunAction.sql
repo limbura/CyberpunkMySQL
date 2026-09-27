@@ -1,5 +1,6 @@
 DROP PROCEDURE IF EXISTS logNetrunAction;
-CREATE DEFINER=`testuser`@`%` PROCEDURE `logNetrunAction`(
+-- CREATE DEFINER=`testuser`@`%` PROCEDURE `logNetrunAction`(
+CREATE PROCEDURE `logNetrunAction`(
     IN 	action 			VARCHAR(50),			-- Логгируемое действие нетраннера, до 50 символов
 	IN 	objectId		INT UNSIGNED,			-- id объекта подвергшегося взлому (id персонажа, замка, камеры и т.д.)
     IN 	netrunnerId 	INT UNSIGNED,			-- id нетраннера (не card_id!)

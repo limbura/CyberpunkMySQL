@@ -1,5 +1,6 @@
 DROP PROCEDURE IF EXISTS transferBalanceCommon;
-CREATE DEFINER=`testuser`@`%` PROCEDURE `transferBalanceCommon`(
+-- CREATE DEFINER=`testuser`@`%` PROCEDURE `transferBalanceCommon`(
+CREATE PROCEDURE `transferBalanceCommon`(
     in  senderId		int unsigned,			-- id отправителя
     in  receiverId		int unsigned,			-- id получателя
     in  amount			int unsigned,			-- Количество (положительное!)
