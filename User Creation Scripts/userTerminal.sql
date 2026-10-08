@@ -7,7 +7,7 @@ DROP USER IF EXISTS 'terminal'@'%';
 
 -- Создать пользователя и задать пароль
 CREATE USER 'terminal'@'%'
-    IDENTIFIED BY 'terminal';
+    IDENTIFIED BY 'term1n0l';
 
 -- MAIN: чтение всех столбцов.
 GRANT SELECT
