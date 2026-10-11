@@ -22,3 +22,10 @@ desktop.ini
 
 # Архивы
 *.zip
+
+# Виртуальные окружения Python
+.venv/
+
+# Кэш Python
+__pycache__/
+*.py[cod]
