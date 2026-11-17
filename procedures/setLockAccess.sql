@@ -18,9 +18,9 @@ BEGIN
 
 	0 	- NO_ERROR					(нет ошибок, успешное выполнение)
 	1 	- USER_NOT_FOUND 			(пользователя с таким card_id не найдено в базе)
-	2	- LOCK_NOT_FOUND			(замка с таким lock_id не найдено в базе)
-	5 	- ACCESS_ALREADY_GRANTED  	(этот пользователь итак имеет доступ к этому замку)
-	6 	- ACCESS_ALREADY_REVOKED  	(этот пользователь итак не имеет доступа к этому замку)
+	8	- LOCK_NOT_FOUND			(замка с таким lock_id не найдено в базе)
+	9 	- ACCESS_ALREADY_GRANTED  	(этот пользователь итак имеет доступ к этому замку)
+	10 	- ACCESS_ALREADY_REVOKED  	(этот пользователь итак не имеет доступа к этому замку)
 	*/
 
 	-- Код +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
@@ -47,7 +47,7 @@ BEGIN
 		FROM locks
 		WHERE locks.lock_id = lock_id
 	) THEN
-		SET errCode = 2;
+		SET errCode = 8;
 
 	-- Назначение доступа
 	ELSEIF grantAccess = TRUE THEN
@@ -55,7 +55,7 @@ BEGIN
 			-- Повторная пара (lock_id, card_id) запрещена PRIMARY KEY
 			-- Преобразовать ошибку дубликата MySQL в код ошибки процедуры "доступ уже назначен"
 			DECLARE CONTINUE HANDLER FOR 1062
-				SET errCode = 5;
+				SET errCode = 9;
 
 			INSERT INTO lock_access (lock_id, card_id)
 			VALUES (lock_id, card_id);
@@ -69,7 +69,7 @@ BEGIN
 
 		-- Если ничего не удалено, доступ уже отсутствовал - вернуть код ошибки процедуры
 		IF ROW_COUNT() = 0 THEN
-			SET errCode = 6;
+			SET errCode = 10;
 		END IF;
 		
 	END IF;
